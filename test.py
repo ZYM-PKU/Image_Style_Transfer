@@ -40,7 +40,10 @@ parser.add_argument('-s','--style_img',type=str, required=True,
                     help='path of your style image')
 parser.add_argument('-m','--model_path', default='model/decoder.pth',
                     help='path of the trained model')
-parser.add_argument('--save_dir', default='result/result.jpg',
+parser.add_argument('--lamda', type=float, default=10.0)
+parser.add_argument('--alpha', type=float, default=1.0)
+
+parser.add_argument('--save_dir', default='result/result0.jpg',
                     help='Directory to save the result image')
 
 args = parser.parse_args()
@@ -58,12 +61,11 @@ def test(contentpath,stylepath):
 
 
 
-    decoder=Decoder().cuda()
+    decoder=Decoder()
     decoder.load_state_dict(torch.load(args.model_path))
 
-
-    net=FPnet(decoder).cuda()
-    output=net(contentimg,styleimg,require_loss=False)
+    fbnet=FPnet(decoder).cuda()
+    output=fbnet(contentimg,styleimg,alpha=args.alpha,lamda=args.lamda,require_loss=False)
 
 
     save_image(output.cpu(),args.save_dir)
