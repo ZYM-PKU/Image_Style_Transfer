@@ -132,21 +132,31 @@ class Decoder(nn.Module):
 
 ##############定义前传网络#############
 class FPnet(nn.Module):
-    def __init__(self,decoder):
+    def __init__(self,decoder,test=False):
         super(FPnet, self).__init__()
         self.encoder = vgg
         self.decoder = decoder
         self.mseloss = nn.MSELoss()
         self.encoder.load_state_dict(torch.load('model/vgg_normalised.pth'))
+        self.feature_vectors={'content':[],'style':[],'result':[]}#储存不同层的特征向量
+
+        if test: #测试情形
+            self.encoder=self.encoder.eval()
+            for param in self.decoder.parameters():
+                param.requires_grad = False#测试时对decoder不进行梯度下降，防止显存爆炸
+
         for param in self.encoder.parameters():
             param.requires_grad = False#对encoder不进行梯度下降
 
-    def encode(self, x,layer=0):#基于vgg19编码提取特定层的特征图
-        '''分别提取relu1-1,relu2-1,relu3-1,relu4-1的特征，默认提取relu4-1'''
+    def encode(self, x,type):#基于vgg19编码提取特定层的特征图
+        '''分别提取relu1-1,relu2-1,relu3-1,relu4-1的特征，存入容器中备用'''
+        #type是一个string，表示输入的是内容、样式、还是生成结果
         layers=[31,4,11,18,31]
-        for i in range(layers[layer]):
+        del self.feature_vectors[type][0:4]#清除原数据
+        for i in range(31):
             x = self.encoder[i](x)
-        return x
+            if i==3 or i==10 or i==17 or i==30:self.feature_vectors[type].append(x)
+
 
     def get_content_loss(self,feature1,feature2):
         '''计算内容损失'''
@@ -164,20 +174,25 @@ class FPnet(nn.Module):
         content=content.to(device)
         style=style.to(device)
 
-        style_features=self.encode(style)
-        content_features=self.encode(content)
+        self.encode(style,'style')
+        self.encode(content,'content')
+        content_features=self.feature_vectors['content']
+        style_features=self.feature_vectors['style']
 
-        t=AdaIN(content_features,style_features)
-        t=alpha*t+(1-alpha)*content_features
+        t=AdaIN(content_features[-1],style_features[-1])
+        t=alpha*t+(1-alpha)*content_features[-1]
 
         output=self.decoder(t)
         if not require_loss:return output
 
-        out_features=self.encode(output)
-        content_loss=self.get_content_loss(out_features,t)
-        style_loss=self.get_style_loss(out_features,style_features)
+        self.encode(output,'result')
+        out_features=self.feature_vectors['result']
+        style_features=self.feature_vectors['style']
 
-        for i in range(1,4):
-            style_loss+=self.get_style_loss(self.encode(output,layer=i),self.encode(style,layer=i))
+        content_loss=self.get_content_loss(out_features[-1],t)
+
+        style_loss=0.0
+        for i in range(4):
+            style_loss+=self.get_style_loss(out_features[i],style_features[i])
 
         return content_loss + style_loss*lamda , output

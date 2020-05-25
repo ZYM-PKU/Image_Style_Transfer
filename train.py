@@ -44,7 +44,9 @@ import torchvision.transforms as transforms
 from net import FPnet,Decoder
 from PIL import Image, ImageFile
 from function import RecurrentSampler
+from alive_progress import alive_bar
 
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")#训练设备
 
@@ -63,8 +65,8 @@ parser.add_argument('--save_dir', default='model/decoder.pth',
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--lr_decay', type=float, default=5e-5)
 parser.add_argument('-i','--iter_times', type=int, default=1000)
-parser.add_argument('-b','--batch_size', type=int, default=4)
-parser.add_argument('--lamda', type=float, default=10.0)
+parser.add_argument('-b','--batch_size', type=int, default=8)
+parser.add_argument('--lamda', type=float, default=1.0)
 parser.add_argument('--alpha', type=float, default=1.0)
 parser.add_argument('--n_threads', type=int, default=0)
 
@@ -123,25 +125,30 @@ def train(decoder,content_loader,style_loader):
     #使用adam优化器
     optimizer = torch.optim.Adam(fpnet.decoder.parameters(), lr=args.lr)
     #optimizer = optim.SGD(decoder.parameters(), lr=0.001, momentum=0.9) #优化函数为随机梯度下降
-    for epoch in range(args.iter_times):
-        adjust_learning_rate(optimizer,epoch)
+    with alive_bar(args.iter_times) as bar:
+        for epoch in range(args.iter_times):
+            bar()
+            adjust_learning_rate(optimizer,epoch)
 
-        content=next(content_loader).to(device)
-        style=next(style_loader).to(device)
+            try:
+                content=next(content_loader).to(device)
+                style=next(style_loader).to(device)
+            except: continue
 
-        loss,output=fpnet(content,style,lamda=args.lamda,alpha=args.alpha)
+            loss,output=fpnet(content,style,lamda=args.lamda,alpha=args.alpha)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        print('iters: '+str(epoch)+'  loss:'+str(loss.item()))
+            #print('iters: '+str(epoch)+'  loss:'+str(loss.item()))
 
-    torch.save(fpnet.decoder.state_dict(), args.save_dir)
-    toc=time.time()
+        torch.save(fpnet.decoder.state_dict(), args.save_dir)
+        toc=time.time()
 
     print('TRIANING COMPLETED.')
     print('Time cost: {}s.'.format(toc-tic))
+    print('model saved as:  '+args.save_dir)
 
 
 def main():
@@ -161,6 +168,7 @@ def main():
     #初始化模型
     decoder=Decoder()
     decoder=decoder.to(device)
+    decoder.load_state_dict(torch.load('model/20200522decoder100000_10.pth'))
     decoder.zero_grad()
 
     #训练网络
