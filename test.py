@@ -30,7 +30,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from net import FPnet,Decoder
 from PIL import Image, ImageFile
-from function import coral,change_color
+from function import coral,change_color,AdaIN
 from torchvision.utils import save_image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,9 +63,9 @@ args = parser.parse_args()
 
 
 
-def test_transform(size):
+def test_transform(pixel):
     transform_list = []
-    transform_list.append(transforms.Resize(size))
+    transform_list.append(transforms.Resize(size=pixel))
     transform_list.append(transforms.ToTensor())
     transform = transforms.Compose(transform_list)
     return transform
@@ -83,15 +83,21 @@ def test(contentpath,stylepath,pixel,multi=False):
 
     mytransfer=test_transform(pixel)
 
-    contentimg = Image.open(str(contentpath)).convert('RGB')
-    styleimg = Image.open(str(stylepath)).convert('RGB')
+    contentfile = open(str(contentpath),'rb')
+    stylefile = open(str(stylepath),'rb')
+
+    contentimg = Image.open(contentfile).convert('RGB')
+    styleimg = Image.open(stylefile).convert('RGB')
+
+    contentfile.close()
+    stylefile.close()
+    
     if args.preserve_color: styleimg = change_color(styleimg, contentimg)
+    #if args.preserve_color: contentimg,styleimg,contentH,contentS = lumi_only(contentimg,styleimg,mytransfer)
+
     contentimg=mytransfer(contentimg).unsqueeze(0)
-    #print(contentimg.shape)
     styleimg=mytransfer(styleimg).unsqueeze(0)
 
-    #if args.preserve_color: styleimg = coral(styleimg, contentimg)
-    
 
     decoder=Decoder().to(device).eval()
     decoder.load_state_dict(torch.load(args.model_path))
@@ -99,9 +105,13 @@ def test(contentpath,stylepath,pixel,multi=False):
     fbnet=FPnet(decoder,True).to(device).eval()
     output=fbnet(contentimg,styleimg,alpha=args.alpha,lamda=args.lamda,require_loss=False)
 
-    image_name=args.save_dir+'/'+content_name+'+'+style_name+'-'+str(pixel)+'.jpg'
+    #if args.preserve_color:output=recover_color(output,contentH,contentS)
+
+    image_name=args.save_dir+'/'+content_name+'+'+style_name+'-'+str(pixel)+'-'+str(args.alpha)+'.jpg'
+
     save_image(output.cpu(),image_name)
     print('image saved  as:  '+image_name)
+
     contentimg.detach()
     styleimg.detach()
     output.detach()
@@ -126,7 +136,7 @@ if __name__ == "__main__":
         styles=glob.glob(args.style_dir+"/*.jpg")
         for content in contents:
             for style in styles:
-                test(content,style,pixel=args.pixel,multi=True,)
+                test(content,style,pixel=args.pixel,multi=True)
                 count+=1
     toc=time.time()
     print('COMPLETED.')
