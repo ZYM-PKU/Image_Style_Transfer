@@ -108,10 +108,11 @@ def change_color(source,target):
 
     for i in range(512):
         for j in range(512):
+
             source[i][j][0]=target[i][j][0]
             source[i][j][1]=target[i][j][1]
     
-    source=cv2.cvtColor(source,cv2.COLOR_HSV2BGR)
+    source=cv2.cvtColor(source,cv2.COLOR_HSV2RGB)
     source=Image.fromarray(source)
     source=detransform(source)
 
@@ -119,5 +120,53 @@ def change_color(source,target):
 
 
 
+
+def lumi_only(contentimg,styleimg,mytransfer):
+    content=mytransfer(contentimg)
+    unloader = transforms.ToPILImage()
+    content =content.cpu().clone()
+    content = unloader(content)
+    content=np.asarray(content)
+    content=cv2.cvtColor(content,cv2.COLOR_RGB2HSV)
+
+    contentH=content[:,:,0]
+    contentS=content[:,:,1]
+
+    contentimg=contentimg.convert('L')
+    styleimg=styleimg.convert('L')
+
+    
+    contentimg=mytransfer(contentimg)
+    styleimg=mytransfer(styleimg)
+
+    cW,cH=contentimg.shape[1],contentimg.shape[2]
+    sW,sH=styleimg.shape[1],styleimg.shape[2]
+
+    contentimg=contentimg.expand(3,cW,cH).unsqueeze(0)
+    styleimg=styleimg.expand(3,sW,sH).unsqueeze(0)
+    styleimg=AdaIN(styleimg,contentimg)
+
+
+    return contentimg,styleimg,contentH,contentS
+
+
+def recover_color(result,contentH,contentS):
+    unloader = transforms.ToPILImage()
+    result = result.cpu().clone().squeeze(0)
+    result = unloader(result)
+    result=np.asarray(result)
+    result=cv2.cvtColor(result,cv2.COLOR_RGB2HSV)
+
+
+    for i in range(min(result.shape[0],contentH.shape[0])):
+        for j in range(min(result.shape[1],contentH.shape[1])):
+            result[i][j][0]=contentH[i][j]
+            result[i][j][1]=contentS[i][j]
+    result=cv2.cvtColor(result,cv2.COLOR_HSV2RGB)
+    result=Image.fromarray(result)
+    again=transforms.ToTensor()
+    result = again(result).unsqueeze(0)
+
+    return result
 
 

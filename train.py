@@ -168,8 +168,8 @@ def main():
     #初始化模型
     decoder=Decoder()
     decoder=decoder.to(device)
-    decoder.load_state_dict(torch.load('model/20200522decoder100000_10.pth'))
-    decoder.zero_grad()
+    decoder.load_state_dict(torch.load('model/decoder160000_5.pth'))
+    #decoder.zero_grad()
 
     #训练网络
     train(decoder,content_loader,style_loader)
